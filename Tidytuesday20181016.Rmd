@@ -1,0 +1,106 @@
+---
+title: "Practice"
+author: "QZ"
+date: "8/23/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+```
+
+
+```{r include=FALSE}
+library(tidyverse)
+library(scales)
+```
+
+### read the data
+```{r by_}
+recent_grads <- read_csv("https://github.com/rfordatascience/tidytuesday/raw/master/data/2018/2018-10-16/recent-grads.csv")
+```
+
+### what Major category makes more money than others(sample size is no less than 50)?
+```{r}
+recent_grads %>% 
+  filter(Sample_size >= 50) %>% 
+  mutate(Major_category = fct_reorder(Major_category, Median)) %>%  # not creat a new column if use the same column name
+  ggplot(aes(Major_category, Median)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = dollar_format()) +  # add dollar sign to the y values
+  coord_flip()+
+  theme_minimal()
+```
+
+```{r}
+recent_grads %>%
+  group_by(Major_category) %>% 
+  summarise(Median = median(Median)) %>%
+  mutate(Major_category = fct_reorder(Major_category, Median)) %>% 
+  ggplot(aes(Major_category, Median)) +
+  geom_col() +
+  scale_y_continuous(labels = dollar_format()) +  
+  coord_flip()+
+  theme_minimal()
+```
+
+```{r}
+recent_grads %>% 
+  arrange(desc(Median)) %>% 
+  select(Major, Major_category, Median, P25th, P75th) %>% 
+  head(20) %>%   # this is to select the first 20 lines, but with arrange(desc(Median)), this is the highest 20 Median lines 
+  mutate(Major = str_to_title(Major),
+         Major = fct_reorder(Major, Median)) %>% 
+  ggplot(aes(Major, Median, color = Major_category)) +
+  geom_point()+
+  geom_errorbar(aes(ymin = P25th, ymax = P75th)) +  # mind the error bar is actually the range of wages
+  scale_y_continuous(labels = dollar_format()) + 
+  expand_limits(y= 0)+   #makes y axis start from 0
+  coord_flip()+
+  theme_minimal()
+```
+
+which is the most common majors for all the people? for man? and for women? 
+```{r}
+recent_grads %>%
+  count(Major_category, wt = Women, sort = TRUE) %>%           # it always creates an n column which is the counts
+  mutate(Major_category = fct_reorder(Major_category, n)) %>%  # reorder factors under Major_category by n
+  ggplot(aes(Major_category, n, fill = Major_category)) +      # fill = is coloring it to make it more attracting
+  geom_col() +
+  coord_flip()+
+  theme_minimal()
+```
+
+```{r}
+majors_processed <- recent_grads %>%
+  arrange(desc(Median)) %>%
+  mutate(Major = str_to_title(Major),
+         Major = fct_reorder(Major, Median))
+
+View(majors_processed)
+
+library(broom)
+majors_processed %>%
+  select(Major, Major_category, Total, ShareWomen, Sample_size, Median) %>%
+  add_count(Major_category) %>%
+  filter(n >= 10) %>%
+  nest(-Major_category) %>%
+  mutate(model = map(data, ~ lm(Median ~ ShareWomen, data = ., weights = Sample_size)),
+         tidied = map(model, tidy)) %>%
+  unnest(tidied) %>%
+  filter(term == "ShareWomen") %>%
+  arrange(estimate) %>%
+  mutate(fdr = p.adjust(p.value, method = "fdr"))
+```
+
+```{r}
+recent_grads %>% 
+  arrange(desc(Median)) %>% 
+  mutate(Major = str_to_title(Major),
+         Major = fct_reorder(Major, Median)) %>%
+  group_by(Major_category) %>% 
+  summarise(across(c(Total, Women, Men), sum, na.rm = TRUE)) %>% 
+  mutate(ShareWomen= Women / Total) %>% 
+  arrange(desc(ShareWomen))
+```
